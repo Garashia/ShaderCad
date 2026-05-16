@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using Avalonia.Threading;
@@ -14,10 +15,15 @@ using Silk.NET.OpenGL;
 namespace ShaderCad.Renderer.Controls;
 
 /// <summary>
-/// Avalonia の OpenGL コンテキスト内で Silk.NET を使って描画するビューポートコントロール。
+/// Silk.NET OpenGL ビューポート。
+/// カメラ操作は Godot/PlayCanvas と同じ「球面座標 Orbit Camera」を採用:
+///   - 左ドラッグ   → 方位角(Azimuth) / 仰角(Elevation) 変更
+///   - スクロール   → ズーム（距離）
+///   - 中ドラッグ   → パン（注視点移動）
 /// </summary>
 public class SilkViewportControl : OpenGlControlBase
 {
+    // ── GL リソース ──────────────────────────────────
     private GL? _gl;
     private uint _vao, _vbo, _shaderProgram;
     private int _vertexCount;
@@ -25,15 +31,38 @@ public class SilkViewportControl : OpenGlControlBase
     private bool _meshNeedsUpdate;
     private float[] _pendingVertexData = Array.Empty<float>();
 
-    // GLES2 / OpenGL 2.1 互換シェーダー (#version 120 で attribute/varying を使用)
+    // ── Orbit Camera 状態（Godot Cursor 相当） ──────
+    private float _azimuth   = 30f  * MathF.PI / 180f;   // 水平角 (rad)
+    private float _elevation = 25f  * MathF.PI / 180f;   // 仰角 (rad)
+    private float _distance  = 12f;                        // 注視点からの距離
+    private Vector3 _target  = Vector3.Zero;               // 注視点（パン先）
+
+    private const float AzimuthSensitivity   = 0.005f;
+    private const float ElevationSensitivity = 0.005f;
+    private const float PanSensitivity       = 0.01f;
+    private const float ZoomSensitivity      = 1.1f;       // 倍率
+    private const float MinDistance          = 0.5f;
+    private const float MaxDistance          = 500f;
+    private const float MaxElevation         =  89f * MathF.PI / 180f;
+    private const float MinElevation         = -89f * MathF.PI / 180f;
+
+    // ── マウス入力 ───────────────────────────────────
+    private bool    _leftDragging;
+    private bool    _middleDragging;
+    private Point   _lastMousePos;
+
+    // ── シェーダー（GLES2 / GL2.1 互換） ────────────
     private const string Vert = @"
 attribute vec3 aPos;
 attribute vec3 aNormal;
 varying vec3 vNormal;
+varying vec3 vFragPos;
+uniform mat4 uModel;
 uniform mat4 uMVP;
 void main() {
     gl_Position = uMVP * vec4(aPos, 1.0);
-    vNormal = aNormal;
+    vNormal   = aNormal;
+    vFragPos  = vec3(uModel * vec4(aPos, 1.0));
 }";
 
     private const string Frag = @"
@@ -41,14 +70,23 @@ void main() {
 precision mediump float;
 #endif
 varying vec3 vNormal;
+varying vec3 vFragPos;
+uniform vec3 uCameraPos;
 void main() {
-    vec3 L = normalize(vec3(1.0, 2.0, 3.0));
-    float d = max(dot(normalize(vNormal), L), 0.0);
-    float light = 0.3 + 0.7 * d;
-    gl_FragColor = vec4(0.8 * light, 0.85 * light, 1.0 * light, 1.0);
+    vec3 N = normalize(vNormal);
+    vec3 L = normalize(vec3(5.0, 8.0, 5.0) - vFragPos);
+    vec3 V = normalize(uCameraPos - vFragPos);
+    vec3 H = normalize(L + V);
+
+    float ambient  = 0.20;
+    float diffuse  = max(dot(N, L), 0.0) * 0.65;
+    float specular = pow(max(dot(N, H), 0.0), 32.0) * 0.25;
+
+    float light = ambient + diffuse + specular;
+    gl_FragColor = vec4(0.72 * light, 0.76 * light, 0.92 * light, 1.0);
 }";
 
-    // ─── 外部から呼ぶ API ───────────────────────────────
+    // ── 外部 API ─────────────────────────────────────
     public void UploadMeshes(IReadOnlyList<DMesh3> meshes)
     {
         var data = new List<float>();
@@ -68,42 +106,113 @@ void main() {
         }
         _pendingVertexData = data.ToArray();
         _meshNeedsUpdate = true;
-        Log.Debug("[Viewport] UploadMeshes {V} verts, glInit={G}", data.Count / 6, _glInitialized);
+        Log.Debug("[Viewport] UploadMeshes {V} verts", data.Count / 6);
         RequestNextFrameRendering();
     }
 
-    // ─── OpenGL 初期化 ──────────────────────────────────
+    // ── 球面座標 → カメラ位置 ────────────────────────
+    /// <summary>
+    /// Godot / PlayCanvas と同じ球面座標変換。
+    /// azimuth=0, elevation=0 → カメラは +Z 方向から見る。
+    /// </summary>
+    private Vector3 ComputeCameraPosition()
+    {
+        float cosE = MathF.Cos(_elevation);
+        float sinE = MathF.Sin(_elevation);
+        float cosA = MathF.Cos(_azimuth);
+        float sinA = MathF.Sin(_azimuth);
+
+        // PlayCanvas orbit-camera.js と同じ計算式
+        return _target + new Vector3(
+            _distance * cosE * sinA,
+            _distance * sinE,
+            _distance * cosE * cosA);
+    }
+
+    // ── マウスイベント ───────────────────────────────
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        var props = e.GetCurrentPoint(this).Properties;
+        _lastMousePos = e.GetPosition(this);
+
+        if (props.IsLeftButtonPressed)  _leftDragging   = true;
+        if (props.IsMiddleButtonPressed) _middleDragging = true;
+
+        e.Pointer.Capture(this);
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        _leftDragging   = false;
+        _middleDragging = false;
+        e.Pointer.Capture(null);
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        var pos   = e.GetPosition(this);
+        var delta = pos - _lastMousePos;
+        _lastMousePos = pos;
+
+        if (_leftDragging)
+        {
+            // Godot: y_rot += delta.x, x_rot -= delta.y
+            _azimuth   -= (float)delta.X * AzimuthSensitivity;
+            _elevation += (float)delta.Y * ElevationSensitivity;
+            _elevation  = Math.Clamp(_elevation, MinElevation, MaxElevation);
+            RequestNextFrameRendering();
+        }
+        else if (_middleDragging)
+        {
+            // パン: カメラの右方向・上方向に沿って注視点を移動
+            var camPos = ComputeCameraPosition();
+            var forward = Vector3.Normalize(_target - camPos);
+            var right   = Vector3.Normalize(Vector3.Cross(forward, Vector3.UnitY));
+            var up      = Vector3.Cross(right, forward);
+
+            _target -= right * (float)delta.X * PanSensitivity * (_distance / 10f);
+            _target += up    * (float)delta.Y * PanSensitivity * (_distance / 10f);
+            RequestNextFrameRendering();
+        }
+    }
+
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        base.OnPointerWheelChanged(e);
+        // PlayCanvas: distance = Clamp(distance * factor, min, max)
+        float factor = e.Delta.Y > 0 ? 1f / ZoomSensitivity : ZoomSensitivity;
+        _distance = Math.Clamp(_distance * factor, MinDistance, MaxDistance);
+        RequestNextFrameRendering();
+    }
+
+    // ── GL 初期化 ────────────────────────────────────
     protected override unsafe void OnOpenGlInit(GlInterface gl)
     {
         base.OnOpenGlInit(gl);
         _gl = GL.GetApi(gl.GetProcAddress);
 
-        _gl.ClearColor(0.13f, 0.13f, 0.15f, 1f);
+        _gl.ClearColor(0.12f, 0.12f, 0.14f, 1f);
         _gl.Enable(EnableCap.DepthTest);
 
-        // シェーダーのコンパイル
-        uint vs = CompileShader(ShaderType.VertexShader, Vert);
+        uint vs = CompileShader(ShaderType.VertexShader,   Vert);
         uint fs = CompileShader(ShaderType.FragmentShader, Frag);
         _shaderProgram = _gl.CreateProgram();
         _gl.AttachShader(_shaderProgram, vs);
         _gl.AttachShader(_shaderProgram, fs);
         _gl.LinkProgram(_shaderProgram);
         _gl.GetProgram(_shaderProgram, ProgramPropertyARB.LinkStatus, out int linked);
-        if (linked == 0)
-            Log.Error("[Viewport] Link error: {E}", _gl.GetProgramInfoLog(_shaderProgram));
-        else
-            Log.Information("[Viewport] Shader OK");
+        if (linked == 0) Log.Error("[Viewport] Link: {E}", _gl.GetProgramInfoLog(_shaderProgram));
         _gl.DeleteShader(vs);
         _gl.DeleteShader(fs);
 
-        // VAO / VBO
         _vao = _gl.GenVertexArray();
         _vbo = _gl.GenBuffer();
-
         _gl.BindVertexArray(_vao);
         _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
 
-        // attribute の location をシェーダーから取得
         uint posLoc = (uint)_gl.GetAttribLocation(_shaderProgram, "aPos");
         uint nrmLoc = (uint)_gl.GetAttribLocation(_shaderProgram, "aNormal");
         uint stride = (uint)(6 * sizeof(float));
@@ -114,19 +223,17 @@ void main() {
         _gl.BindVertexArray(0);
 
         _glInitialized = true;
-        Log.Information("[Viewport] Init done. posLoc={P} nrmLoc={N}", posLoc, nrmLoc);
+        Log.Information("[Viewport] GL Init OK");
 
-        // 描画ループ
         DispatcherTimer.Run(() => { RequestNextFrameRendering(); return true; },
             TimeSpan.FromMilliseconds(16));
     }
 
-    // ─── 描画 ───────────────────────────────────────────
+    // ── 描画 ─────────────────────────────────────────
     protected override unsafe void OnOpenGlRender(GlInterface gl, int fb)
     {
         if (_gl == null || !_glInitialized) return;
 
-        // ★ 重要: DPIスケーリングを考慮してViewportを設定
         var scaling = Avalonia.Controls.TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
         int w = (int)(Bounds.Width  * scaling);
         int h = (int)(Bounds.Height * scaling);
@@ -135,7 +242,6 @@ void main() {
         _gl.Viewport(0, 0, (uint)w, (uint)h);
         _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-        // VBO 更新（GL スレッド上で安全に実行）
         if (_meshNeedsUpdate && _pendingVertexData.Length > 0)
         {
             _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
@@ -145,33 +251,28 @@ void main() {
                     BufferUsageARB.DynamicDraw);
             _vertexCount = _pendingVertexData.Length / 6;
             _meshNeedsUpdate = false;
-            Log.Debug("[Viewport] VBO uploaded {V} verts", _vertexCount);
         }
 
         if (_vertexCount <= 0) return;
 
         _gl.UseProgram(_shaderProgram);
 
-        // ★ 正しいMVP計算 (Avalonia公式サンプルと同じ方式)
-        // System.Numerics を OpenGL に渡す場合:
-        //   transpose=FALSE + MemoryMarshal で生のバイト列をそのまま渡す
-        // 乗算順: model * view * proj (System.Numerics の慣例)
-        float aspect = (float)w / h;
-        var model = Matrix4x4.Identity;
-        var view  = Matrix4x4.CreateLookAt(
-            new Vector3(0f, 3f, 12f),   // カメラ位置
-            Vector3.Zero,               // 注視点
-            Vector3.UnitY);
-        var proj  = Matrix4x4.CreatePerspectiveFieldOfView(
-            50f * MathF.PI / 180f, aspect, 0.1f, 500f);
+        // カメラ位置を球面座標から計算
+        var camPos = ComputeCameraPosition();
+        var model  = Matrix4x4.Identity;
+        var view   = Matrix4x4.CreateLookAt(camPos, _target, Vector3.UnitY);
+        var proj   = Matrix4x4.CreatePerspectiveFieldOfView(
+            50f * MathF.PI / 180f, (float)w / h, 0.01f, 1000f);
 
-        // System.Numerics は行ベクトル用なので: V' = V * M
-        // OpenGL (GLSL) は列ベクトル用: V' = M * V
-        // → transpose=FALSE で渡すと OpenGL が自動的に転置を行う
         var mvp = model * view * proj;
-        int mvpLoc = _gl.GetUniformLocation(_shaderProgram, "uMVP");
-        _gl.UniformMatrix4(mvpLoc, 1, false,
-            MemoryMarshal.CreateReadOnlySpan(ref mvp.M11, 16));
+
+        int mvpLoc   = _gl.GetUniformLocation(_shaderProgram, "uMVP");
+        int modelLoc = _gl.GetUniformLocation(_shaderProgram, "uModel");
+        int camLoc   = _gl.GetUniformLocation(_shaderProgram, "uCameraPos");
+
+        _gl.UniformMatrix4(mvpLoc,   1, false, MemoryMarshal.CreateReadOnlySpan(ref mvp.M11,   16));
+        _gl.UniformMatrix4(modelLoc, 1, false, MemoryMarshal.CreateReadOnlySpan(ref model.M11, 16));
+        _gl.Uniform3(camLoc, camPos.X, camPos.Y, camPos.Z);
 
         _gl.BindVertexArray(_vao);
         _gl.DrawArrays(PrimitiveType.Triangles, 0, (uint)_vertexCount);
@@ -187,7 +288,6 @@ void main() {
         base.OnOpenGlDeinit(gl);
     }
 
-    // ─── ユーティリティ ─────────────────────────────────
     private uint CompileShader(ShaderType type, string src)
     {
         uint id = _gl!.CreateShader(type);
@@ -196,11 +296,10 @@ void main() {
         _gl.GetShader(id, ShaderParameterName.CompileStatus, out int ok);
         if (ok == 0)
         {
-            string err = _gl.GetShaderInfoLog(id);
-            Log.Error("[Viewport] {T} compile error: {E}", type, err);
+            var err = _gl.GetShaderInfoLog(id);
+            Log.Error("[Viewport] {T}: {E}", type, err);
             throw new Exception($"{type}: {err}");
         }
-        Log.Debug("[Viewport] {T} compiled OK", type);
         return id;
     }
 }
