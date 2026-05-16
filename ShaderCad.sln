@@ -1,0 +1,66 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{4C286E3C-DFCA-4A70-9B18-7A2FE9F443A7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShaderCad.Core", "src\ShaderCad.Core\ShaderCad.Core.csproj", "{FA02FEF4-458D-4BC6-8820-20872A673A27}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShaderCad.Kernel", "src\ShaderCad.Kernel\ShaderCad.Kernel.csproj", "{28F92A81-D431-48D8-951C-DC947C1AAE83}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShaderCad.Renderer", "src\ShaderCad.Renderer\ShaderCad.Renderer.csproj", "{6BC2E795-C969-4018-AB24-8ABD7E9E79E1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShaderCad.App", "src\ShaderCad.App\ShaderCad.App.csproj", "{2EDED6AE-19DC-4933-B473-ECEE52F63648}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "libs", "libs", "{E77F598F-51FC-4187-B0FF-379BF5CEE89B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "geometry3Sharp_netstandard", "libs\geometry3Sharp\geometry3Sharp_netstandard.csproj", "{A4E215F5-5B8A-4C6D-B677-C03C5A4BA59C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{6738A461-4F6D-4102-9BD5-2B1DC277EDDC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShaderCad.Core.Tests", "tests\ShaderCad.Core.Tests\ShaderCad.Core.Tests.csproj", "{E5664E03-CC2A-4C25-ABED-EAA4377845A4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FA02FEF4-458D-4BC6-8820-20872A673A27}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FA02FEF4-458D-4BC6-8820-20872A673A27}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FA02FEF4-458D-4BC6-8820-20872A673A27}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FA02FEF4-458D-4BC6-8820-20872A673A27}.Release|Any CPU.Build.0 = Release|Any CPU
+		{28F92A81-D431-48D8-951C-DC947C1AAE83}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{28F92A81-D431-48D8-951C-DC947C1AAE83}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{28F92A81-D431-48D8-951C-DC947C1AAE83}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{28F92A81-D431-48D8-951C-DC947C1AAE83}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6BC2E795-C969-4018-AB24-8ABD7E9E79E1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6BC2E795-C969-4018-AB24-8ABD7E9E79E1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6BC2E795-C969-4018-AB24-8ABD7E9E79E1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6BC2E795-C969-4018-AB24-8ABD7E9E79E1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2EDED6AE-19DC-4933-B473-ECEE52F63648}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2EDED6AE-19DC-4933-B473-ECEE52F63648}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2EDED6AE-19DC-4933-B473-ECEE52F63648}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2EDED6AE-19DC-4933-B473-ECEE52F63648}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A4E215F5-5B8A-4C6D-B677-C03C5A4BA59C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A4E215F5-5B8A-4C6D-B677-C03C5A4BA59C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A4E215F5-5B8A-4C6D-B677-C03C5A4BA59C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A4E215F5-5B8A-4C6D-B677-C03C5A4BA59C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E5664E03-CC2A-4C25-ABED-EAA4377845A4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E5664E03-CC2A-4C25-ABED-EAA4377845A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E5664E03-CC2A-4C25-ABED-EAA4377845A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E5664E03-CC2A-4C25-ABED-EAA4377845A4}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{FA02FEF4-458D-4BC6-8820-20872A673A27} = {4C286E3C-DFCA-4A70-9B18-7A2FE9F443A7}
+		{28F92A81-D431-48D8-951C-DC947C1AAE83} = {4C286E3C-DFCA-4A70-9B18-7A2FE9F443A7}
+		{6BC2E795-C969-4018-AB24-8ABD7E9E79E1} = {4C286E3C-DFCA-4A70-9B18-7A2FE9F443A7}
+		{2EDED6AE-19DC-4933-B473-ECEE52F63648} = {4C286E3C-DFCA-4A70-9B18-7A2FE9F443A7}
+		{A4E215F5-5B8A-4C6D-B677-C03C5A4BA59C} = {E77F598F-51FC-4187-B0FF-379BF5CEE89B}
+		{E5664E03-CC2A-4C25-ABED-EAA4377845A4} = {6738A461-4F6D-4102-9BD5-2B1DC277EDDC}
+	EndGlobalSection
+EndGlobal

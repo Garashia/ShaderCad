@@ -1,0 +1,12 @@
+[submodule "libs/Tomlyn"]
+	path = libs/Tomlyn
+	url = https://github.com/xoofx/Tomlyn.git
+[submodule "libs/geometry3Sharp"]
+	path = libs/geometry3Sharp
+	url = https://github.com/gradientspace/geometry3Sharp.git
+[submodule "libs/Silk.NET"]
+	path = libs/Silk.NET
+	url = https://github.com/dotnet/Silk.NET.git
+[submodule "libs/Avalonia"]
+	path = libs/Avalonia
+	url = https://github.com/AvaloniaUI/Avalonia.git
