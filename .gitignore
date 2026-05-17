@@ -404,6 +404,9 @@ FodyWeavers.xsd
 *.sln.iml
 .idea
 
+# Local dev tools (not shared via Git)
+tools/local/
+
 ##
 ## Visual studio for Mac
 ##
@@ -425,6 +428,11 @@ test-results/
 # Mac bundle stuff
 *.dmg
 *.app
+# ShaderCad.App project (folder name matches *.app but is not a macOS bundle)
+!src/ShaderCad.App/
+!src/ShaderCad.App/**/*.cs
+!src/ShaderCad.App/**/*.csproj
+!src/ShaderCad.App/**/*.axaml
 
 # content below from: https://github.com/github/gitignore/blob/master/Global/macOS.gitignore
 # General

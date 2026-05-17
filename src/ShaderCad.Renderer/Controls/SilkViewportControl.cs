@@ -34,6 +34,10 @@ public class SilkViewportControl : OpenGlControlBase
     private uint _lineVao, _lineVbo, _lineProgram;
     private int  _lineVertexCount;
 
+    // ── GL リソース（XYZ軸矢印 トライアングル）
+    private uint _axisVao, _axisVbo;
+    private int  _axisVertexCount;
+
     // ── Orbit Camera ────────────────────────────────
     private float _azimuth   = 30f * MathF.PI / 180f;
     private float _elevation = 25f * MathF.PI / 180f;
@@ -190,22 +194,81 @@ void main() {
             data.Add(x1); data.Add(y1); data.Add(z1); data.Add(r); data.Add(g); data.Add(b);
         }
 
-        // XZ グリッド（暗いグレー）
-        float gc = 0.30f;
+        // XZ グリッド（暗いグレー、中心線だけ少し明るい）
         for (int i = -half; i <= half; i++)
         {
             float fi = i * step;
-            // X 方向
+            float gc = (i == 0) ? 0.42f : 0.22f;
             Line(-half * step, 0, fi,  half * step, 0, fi,  gc, gc, gc);
-            // Z 方向
             Line(fi, 0, -half * step,  fi, 0,  half * step,  gc, gc, gc);
         }
 
-        // X 軸（赤）  Y 軸（緑）  Z 軸（青）
-        float al = half * step;
-        Line(0, 0, 0,  al, 0,  0,   0.9f, 0.20f, 0.20f); // +X red
-        Line(0, 0, 0,  0,  al, 0,   0.20f, 0.9f, 0.20f); // +Y green
-        Line(0, 0, 0,  0,  0,  al,  0.20f, 0.40f, 0.9f); // +Z blue
+        return data.ToArray();
+    }
+
+    // ═══════════════════════════════════════════════
+    // XYZ軸矢印生成（シリンダーシャフト + コーンヘッド） Blender/Godotと同様
+    // ═══════════════════════════════════════════════
+    private static float[] BuildAxisArrows()
+    {
+        const int   N        = 10;      // 多角形の辺数
+        const float shaftLen = 3.0f;    // 長さを伸ばす（球体に隠れないように）
+        const float shaftR   = 0.05f;   // 少し太く
+        const float headLen  = 0.6f;
+        const float headR    = 0.15f;
+
+        var data = new List<float>();
+
+        var axes = new (Vector3 dir, Vector3 tmpUp, float r, float g, float b)[]
+        {
+            (Vector3.UnitX, Vector3.UnitY, 0.95f, 0.18f, 0.18f),  // X 赤
+            (Vector3.UnitY, Vector3.UnitZ, 0.18f, 0.90f, 0.18f),  // Y 緑
+            (Vector3.UnitZ, Vector3.UnitY, 0.18f, 0.38f, 0.95f),  // Z 青
+        };
+
+        foreach (var (dir, tmpUp, cr, cg, cb) in axes)
+        {
+            var lx = Vector3.Normalize(Vector3.Cross(tmpUp, dir));
+            var ly = Vector3.Normalize(Vector3.Cross(dir, lx));
+
+            Vector3[] Ring(float along, float radius)
+            {
+                var ring = new Vector3[N];
+                for (int i = 0; i < N; i++)
+                {
+                    float a = 2f * MathF.PI * i / N;
+                    ring[i] = dir * along + lx * MathF.Cos(a) * radius
+                                          + ly * MathF.Sin(a) * radius;
+                }
+                return ring;
+            }
+
+            void Tri(Vector3 a, Vector3 b, Vector3 c)
+            {
+                data.Add(a.X); data.Add(a.Y); data.Add(a.Z); data.Add(cr); data.Add(cg); data.Add(cb);
+                data.Add(b.X); data.Add(b.Y); data.Add(b.Z); data.Add(cr); data.Add(cg); data.Add(cb);
+                data.Add(c.X); data.Add(c.Y); data.Add(c.Z); data.Add(cr); data.Add(cg); data.Add(cb);
+            }
+
+            var r0  = Ring(0f,       shaftR);
+            var r1  = Ring(shaftLen, shaftR);
+            var r2  = Ring(shaftLen, headR);
+            var tip = dir * (shaftLen + headLen);
+
+            for (int i = 0; i < N; i++)
+            {
+                int n = (i + 1) % N;
+                // シャフト側面
+                Tri(r0[i], r1[n], r1[i]);
+                Tri(r0[i], r0[n], r1[n]);
+                // 底面キャップ
+                Tri(Vector3.Zero, r0[n], r0[i]);
+                // コーン側面
+                Tri(r2[i], tip, r2[n]);
+                // コーン底面
+                Tri(dir * shaftLen, r2[n], r2[i]);
+            }
+        }
 
         return data.ToArray();
     }
@@ -332,8 +395,28 @@ void main() {
         _lineVertexCount = gridData.Length / 6;
         _gl.BindVertexArray(0);
 
+        // --- 軸矢印用 VAO/VBO 初期化 ---
+        var axisData = BuildAxisArrows();
+        _axisVao = _gl.GenVertexArray();
+        _axisVbo = _gl.GenBuffer();
+        _gl.BindVertexArray(_axisVao);
+        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _axisVbo);
+        fixed (float* aptr = axisData)
+            _gl.BufferData(BufferTargetARB.ArrayBuffer,
+                (nuint)(axisData.Length * sizeof(float)), aptr, BufferUsageARB.StaticDraw);
+        // aPos と aColor のレイアウトは lineProgram と同じ
+        uint ap = (uint)_gl.GetAttribLocation(_lineProgram, "aPos");
+        uint ac = (uint)_gl.GetAttribLocation(_lineProgram, "aColor");
+        uint as_ = (uint)(6 * sizeof(float));
+        _gl.VertexAttribPointer(ap, 3, VertexAttribPointerType.Float, false, as_, (void*)0);
+        _gl.EnableVertexAttribArray(ap);
+        _gl.VertexAttribPointer(ac, 3, VertexAttribPointerType.Float, false, as_, (void*)(3 * sizeof(float)));
+        _gl.EnableVertexAttribArray(ac);
+        _axisVertexCount = axisData.Length / 6;
+        _gl.BindVertexArray(0);
+
         _glInitialized = true;
-        Log.Information("[Viewport] GL Init OK  gridVerts={G}", _lineVertexCount);
+        Log.Information("[Viewport] GL Init OK  gridVerts={G} axisVerts={A}", _lineVertexCount, _axisVertexCount);
 
         DispatcherTimer.Run(() => { RequestNextFrameRendering(); return true; },
             TimeSpan.FromMilliseconds(16));
@@ -374,13 +457,20 @@ void main() {
             50f * MathF.PI / 180f, (float)w / h, 0.01f, 1000f);
         var mvp = model * view * proj;
 
-        // --- グリッド / 軸を描画 ---
+        // --- グリッドラインを描画 ---
         _gl.UseProgram(_lineProgram);
         int lMvpLoc = _gl.GetUniformLocation(_lineProgram, "uMVP");
         _gl.UniformMatrix4(lMvpLoc, 1, false,
             MemoryMarshal.CreateReadOnlySpan(ref mvp.M11, 16));
         _gl.BindVertexArray(_lineVao);
         _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_lineVertexCount);
+        _gl.BindVertexArray(0);
+
+        // --- XYZ軸矢印を描画（同じ lineProgram で GL_TRIANGLES）---
+        _gl.UniformMatrix4(lMvpLoc, 1, false,
+            MemoryMarshal.CreateReadOnlySpan(ref mvp.M11, 16));
+        _gl.BindVertexArray(_axisVao);
+        _gl.DrawArrays(PrimitiveType.Triangles, 0, (uint)_axisVertexCount);
         _gl.BindVertexArray(0);
 
         // --- メッシュを描画 ---
@@ -405,6 +495,7 @@ void main() {
     {
         _gl?.DeleteBuffer(_meshVbo);  _gl?.DeleteVertexArray(_meshVao);
         _gl?.DeleteBuffer(_lineVbo);  _gl?.DeleteVertexArray(_lineVao);
+        _gl?.DeleteBuffer(_axisVbo);  _gl?.DeleteVertexArray(_axisVao);
         _gl?.DeleteProgram(_meshProgram); _gl?.DeleteProgram(_lineProgram);
         _gl?.Dispose();
         base.OnOpenGlDeinit(gl);

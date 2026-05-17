@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ShaderCad.App.ViewModels"
+             x:Class="ShaderCad.App.Views.InspectorView"
+             x:DataType="vm:InspectorViewModel">
+
+    <!-- ここでDataTemplateを定義し、ViewModelの型に応じてUI要素を自動で切り替える (OOPの多態性) -->
+    <UserControl.DataTemplates>
+        
+        <!-- DoublePropertyViewModel 用のUI (数値入力) -->
+        <DataTemplate DataType="{x:Type vm:DoublePropertyViewModel}">
+            <Grid ColumnDefinitions="120,*">
+                <TextBlock Grid.Column="0" Text="{Binding DisplayName}" VerticalAlignment="Center" Margin="5"/>
+                <NumericUpDown Grid.Column="1" Value="{Binding Value}" Minimum="{Binding Min}" Maximum="{Binding Max}" Margin="5"/>
+            </Grid>
+        </DataTemplate>
+        
+        <!-- 将来的に StringPropertyViewModel や Vector3PropertyViewModel の定義を追加 -->
+        
+    </UserControl.DataTemplates>
+
+    <Border Background="#2D2D30" BorderBrush="#3F3F46" BorderThickness="1" Padding="10">
+        <StackPanel>
+            <TextBlock Text="Inspector" FontWeight="Bold" FontSize="16" Margin="0,0,0,15"/>
+            
+            <!-- ItemsControlはリスト内の各要素に対して対応するDataTemplateを自動適用して描画します -->
+            <ItemsControl ItemsSource="{Binding Properties}" />
+        </StackPanel>
+    </Border>
+</UserControl>
